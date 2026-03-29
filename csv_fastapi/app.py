@@ -97,4 +97,50 @@ def get_student(student_id: str):
 def get_students(db: Session = Depends(get_db)):
     students = db.query(models.Student).all()
     return students
+# -----------------------------
+# Get Students by Age Greater Than (CSV)
+# -----------------------------
 
+@app.get("/students/age-greater-than/{age}")
+def get_students_age_greater(age: int):
+    result = df[df["age"] > age]
+
+    if not result.empty:
+        return result.to_dict(orient="records")
+    else:
+        return {"message": "No students found"}
+# -----------------------------
+# Get Students by Age Lesser Than (CSV)
+# -----------------------------
+    
+@app.get("/students/age-lesser-than/{age}")
+def get_students_age_lesser(age: int):
+    result = df[df["age"] < age]
+
+    if not result.empty:
+        return result.to_dict(orient="records")
+    else:
+        return {"message": "No students found"}
+# -----------------------------
+#✅ Filter by City(CSV)
+# -----------------------------    
+
+@app.get("/students/city/{city}")
+def get_students_by_city(city: str):
+    result = df[df["city"].str.lower() == city.lower()]
+    return result.to_dict(orient="records")
+# -----------------------------
+#👉 Age > X AND GPA > Y
+# ----------------------------- 
+@app.get("/students/filter_greater_both_age_gpa")
+def filter_students(age: int, gpa: float):
+    result = df[(df["age"] > age) & (df["gpa"] > gpa)]
+    return result.to_dict(orient="records")
+
+# -----------------------------
+#👉 Age < X AND GPA < Y
+# ----------------------------- 
+@app.get("/students/filter_lesser_both_age_gpa")
+def filter_students(age: int, gpa: float):
+    result = df[(df["age"] < age) & (df["gpa"] < gpa)]
+    return result.to_dict(orient="records")
