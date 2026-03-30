@@ -1,4 +1,8 @@
 from fastapi import FastAPI, Depends
+import crud
+from typing import List
+from fastapi import HTTPException
+from schema import StudentCreate, StudentUpdate
 from sqlalchemy.orm import Session  
 import pandas as pd
 from sqlalchemy import text
@@ -17,7 +21,7 @@ app = FastAPI()
 # Load CSV Data
 # -----------------------------
 try:
-    df = pd.read_csv(r"C:\Users\Shaur\OneDrive\Desktop\ANKITA_CSV_TO_FASTAPI\csv_fastapi\students_complete.csv")
+    df = pd.read_csv(r"C:\Users\LENOVO\Downloads\students_complete.csv")
 
     if 'gpa' in df.columns:
         df['gpa'] = df['gpa'].fillna(0)
@@ -67,40 +71,91 @@ def health_check(db: Session = Depends(get_db)):
             "status": "unhealthy",
             "error": str(e)
         }
+    
+# -----------------------------
+# ✅ CREATE API
+# -----------------------------
+@app.post("/students")
+def create_student(student: StudentCreate, db: Session = Depends(get_db)):
+    return crud.create_student(db, student.dict())
+
 
 # -----------------------------
-# Get All Students (CSV)
+# ✅ Get All Students (CSV)
 # -----------------------------
-@app.get("/data")
-def get_data():
-    return df.to_dict(orient="records")
+@app.get("/students-db")
+def get_students(db: Session = Depends(get_db)):
+    return crud.get_all_students(db)
 
 # -----------------------------
 # Get Specific Student by ID
 # -----------------------------
-@app.get("/student/{student_id}")
-def get_student(student_id: str):
+@app.get("/students-db/{student_id}")
+def get_student(student_id: str, db: Session = Depends(get_db)):
+    student = crud.get_student_by_id(db, student_id)
 
-    print("Received:", student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
 
-    result = df[df["student_id"] == student_id]
+    return student
 
-    if len(result) > 0:
-        return result.to_dict(orient="records")
-    else:
+# -----------------------------
+# Update Student by ID  
+# -----------------------------
+@app.put("/students/{student_id}")
+def update_student(student_id: str, updated_data: StudentUpdate, db: Session = Depends(get_db)):
+
+    student = db.query(models.Student).filter(
+        models.Student.student_id == student_id
+    ).first()
+
+    if not student:
         return {"message": "Student not found"}
 
-# -----------------------------
-# Get All Students (DB)
-# -----------------------------
-@app.get("/students")
-def get_students(db: Session = Depends(get_db)):
-    students = db.query(models.Student).all()
-    return students
-# -----------------------------
-# Get Students by Age Greater Than (CSV)
-# -----------------------------
+    for key, value in updated_data.dict(exclude_unset=True).items():
+        setattr(student, key, value)
 
+    db.commit()
+    db.refresh(student)
+
+    return student
+
+# -----------------------------
+# Delete Student by ID
+# -----------------------------
+@app.delete("/students/{student_id}")
+def delete_student(student_id: str, db: Session = Depends(get_db)):
+    student = crud.delete_student(db, student_id)
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    return {"message": "Student deleted successfully"}
+
+# # ------------------------
+# # Get All Students From DB
+# # ------------------------
+# @app.get("/students", response_model=List[schema.StudentCreate])
+# def get_all_students(db: Session = Depends(get_db)):
+#     students = db.query(models.Student).all()
+#     return students
+
+# ------------------------
+# Get Student by ID from DB
+# ------------------------
+@app.get("/students/{student_id_db}")
+def get_student(student_id: str, db: Session = Depends(get_db)):
+    student = db.query(models.Student).filter(
+        models.Student.student_id == student_id
+    ).first()
+
+    if not student:
+        return {"message": "Student not found"}
+
+    return student
+# --------------------------------
+# Get Students by Greater than Age 
+# --------------------------------
 @app.get("/students/age-greater-than/{age}")
 def get_students_age_greater(age: int):
     result = df[df["age"] > age]
@@ -109,10 +164,10 @@ def get_students_age_greater(age: int):
         return result.to_dict(orient="records")
     else:
         return {"message": "No students found"}
-# -----------------------------
-# Get Students by Age Lesser Than (CSV)
-# -----------------------------
     
+# -------------------------------
+# Get Students by Lesser than Age 
+# -------------------------------
 @app.get("/students/age-lesser-than/{age}")
 def get_students_age_lesser(age: int):
     result = df[df["age"] < age]
@@ -121,39 +176,7 @@ def get_students_age_lesser(age: int):
         return result.to_dict(orient="records")
     else:
         return {"message": "No students found"}
-# -----------------------------
-#✅ Filter by City(CSV)
-# -----------------------------    
-
-@app.get("/students/city/{city}")
-def get_students_by_city(city: str):
-    result = df[df["city"].str.lower() == city.lower()]
-    return result.to_dict(orient="records")
-# -----------------------------
-#👉 Age > X AND GPA > Y
-# ----------------------------- 
-@app.get("/students/filter_greater_both_age_gpa")
-def filter_students(age: int, gpa: float):
-    result = df[(df["age"] > age) & (df["gpa"] > gpa)]
-    return result.to_dict(orient="records")
-
-# -----------------------------
-#👉 Age < X AND GPA < Y
-# ----------------------------- 
-@app.get("/students/filter_lesser_both_age_gpa")
-def filter_students(age: int, gpa: float):
-    result = df[(df["age"] < age) & (df["gpa"] < gpa)]
-    return result.to_dict(orient="records")
-
-
-# -----------------------------
-# Get Students by Status 
-# -----------------------------
-@app.get("/students/status/{status}")
-def get_students_by_status(status: str):
-    result = df[df["status"] == status]
-    return result.to_dict(orient="records")
-
+    
 
 # ---------------------------------------
 # Get Students by Greater than Attendance
@@ -166,8 +189,6 @@ def get_students_attendance_greater(attendance: float):
         return result.to_dict(orient="records")
     else:
         return {"message": "No students found"}
-
-
 
 # --------------------------------------
 # Get Students by Lesser than Attendance
@@ -206,6 +227,26 @@ def get_students_scholarship_lesser(scholarship: int):
     else:
         return {"message": "No students found"}
 
+
+    
+# -----------------------------
+# Get Students by City  
+# -----------------------------
+@app.get("/students/city/{city}")
+def get_students_by_city(city: str):
+    result = df[df["city"].str.lower() == city.lower()]
+    return result.to_dict(orient="records")
+
+
+# -----------------------------
+# Get Students by Status 
+# -----------------------------
+@app.get("/students/status/{status}")
+def get_students_by_status(status: str):
+    result = df[df["status"] == status]
+    return result.to_dict(orient="records")
+
+
 # -----------------------------
 # Get Students by Major
 # -----------------------------
@@ -216,9 +257,39 @@ def get_students_by_major(major: str):
 
 
 # -----------------------------
-# 👉 Age = X AND GPA = Y
+# Age Greater Than X
 # -----------------------------
-@app.get("/students/filter_equal_both_age_gpa")
-def filter_students(age: int, gpa: float):
-    result = df[(df["age"] == age) & (df["gpa"] == gpa)]
-    return result.to_dict(orient="records")
+@app.get("/students/age-greater-than/{age}")
+def get_students_age_greater(age: int):
+    result = df[df["age"] > age]
+
+    if not result.empty:
+        return result.to_dict(orient="records")
+    else:
+        return {"message": "No students found"}
+
+
+# -----------------------------
+# Age Less Than X
+# -----------------------------
+@app.get("/students/age-lesser-than/{age}")
+def get_students_age_lesser(age: int):
+    result = df[df["age"] < age]
+
+    if not result.empty:
+        return result.to_dict(orient="records")
+    else:
+        return {"message": "No students found"}
+
+
+# -----------------------------
+# Age Equal To X
+# -----------------------------
+@app.get("/students/age-equal/{age}")
+def get_students_age_equal(age: int):
+    result = df[df["age"] == age]
+
+    if not result.empty:
+        return result.to_dict(orient="records")
+    else:
+        return {"message": "No students found"}
